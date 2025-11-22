@@ -1,5 +1,4 @@
 // Using runtime require to avoid bundler issues with ESM imports
-// eslint-disable-next-line @typescript-eslint/no-var-requires
 const prismaModule = require('@prisma/client') as typeof import('@prisma/client')
 const PrismaClient: typeof import('@prisma/client').PrismaClient = prismaModule.PrismaClient
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createUser } from '@/lib/auth';
+import { createSession } from '@/lib/session';
 import { authRateLimit } from '@/lib/rateLimit';
 
 export const runtime = 'nodejs';
@@ -27,6 +28,7 @@ export async function POST(request: NextRequest) {
     }
 
     const user = await createUser(username, password);
+    await createSession(user);
     return NextResponse.json({ user }, { status: 201 });
   } catch (error) {
     if (error instanceof Error && error.message === 'Username already exists') {

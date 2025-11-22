@@ -96,6 +96,7 @@ export default function PracticePage() {
     router.push('/overview');
   };
 
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -238,12 +239,14 @@ export default function PracticePage() {
                 <p className="text-gray-700 mb-4">
                   New Elo: {result.newElo}
                 </p>
-                <button
-                  onClick={handleContinue}
-                  className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700"
-                >
-                  Continue
-                </button>
+                <div className="flex justify-center">
+                  <button
+                    onClick={handleContinue}
+                    className="bg-indigo-600 text-white px-6 py-2 rounded-md hover:bg-indigo-700"
+                  >
+                    Continue
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -309,6 +312,7 @@ function TrueFalseExercise({ data, onAnswer, disabled }: { data: TrueFalseData; 
 
 function MatchExercise({ data, onAnswer, disabled }: { data: MatchData; onAnswer: (answer: Record<number, number>) => void; disabled: boolean }) {
   const [matches, setMatches] = useState<Record<number, number>>({});
+  const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
 
   const handleMatch = (leftIndex: number, rightIndex: number) => {
     const newMatches = { ...matches, [leftIndex]: rightIndex };
@@ -316,14 +320,26 @@ function MatchExercise({ data, onAnswer, disabled }: { data: MatchData; onAnswer
     onAnswer(newMatches);
   };
 
+  const rightAlreadyTaken = (rightIndex: number) => {
+    return Object.values(matches).includes(rightIndex);
+  };
+
   return (
     <div className="grid grid-cols-2 gap-8">
       <div>
         <h4 className="font-semibold text-gray-900 mb-3">Left Column</h4>
         {data.left.map((item: string, index: number) => (
-          <div key={index} className="p-3 bg-gray-50 rounded mb-2">
+          <button
+            key={index}
+            onClick={() => {
+              if (disabled) return;
+              setSelectedLeft(index);
+            }}
+            className={`block w-full p-3 rounded mb-2 text-left ${selectedLeft === index ? "bg-indigo-100" : "bg-gray-50"} hover:bg-indigo-50 disabled:cursor-not-allowed`}
+            disabled={disabled}
+          >
             {item}
-          </div>
+          </button>
         ))}
       </div>
       <div>
@@ -332,13 +348,14 @@ function MatchExercise({ data, onAnswer, disabled }: { data: MatchData; onAnswer
           <button
             key={index}
             onClick={() => {
-              const leftIndex = Object.keys(matches).find(key => matches[parseInt(key)] === index);
-              if (leftIndex !== undefined) {
-                handleMatch(parseInt(leftIndex), index);
+              if (disabled) return;
+              if (selectedLeft !== null && matches[selectedLeft] === undefined && !rightAlreadyTaken(index)) {
+                handleMatch(selectedLeft, index);
+                setSelectedLeft(null);
               }
             }}
-            disabled={disabled}
-            className="block w-full p-3 bg-blue-50 rounded mb-2 text-left hover:bg-blue-100 disabled:cursor-not-allowed"
+            disabled={disabled || rightAlreadyTaken(index)}
+            className="block w-full p-3 bg-blue-50 rounded mb-2 text-left hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {item}
           </button>

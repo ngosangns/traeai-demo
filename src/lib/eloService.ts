@@ -46,8 +46,17 @@ export function evaluateAnswer(
       return userAnswer === correctAnswer.correct;
       
     case 'match':
-      // For MVP, we check if all pairs match exactly
-      return JSON.stringify(userAnswer) === JSON.stringify(correctAnswer.pairs);
+      if (!correctAnswer.pairs || typeof userAnswer !== 'object') return false;
+      const ua = userAnswer as Record<number, number>;
+      const ca = correctAnswer.pairs as Record<number, number>;
+      const uaKeys = Object.keys(ua);
+      const caKeys = Object.keys(ca);
+      if (uaKeys.length !== caKeys.length) return false;
+      for (const k of caKeys) {
+        const idx = Number(k);
+        if (ua[idx] !== ca[idx]) return false;
+      }
+      return true;
       
     case 'anagram':
       return userAnswer.toLowerCase().trim() === correctAnswer.target.toLowerCase().trim();
