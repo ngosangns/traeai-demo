@@ -366,7 +366,14 @@ export default function OverviewPage() {
           {/* Practice Inline Section */}
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Practice</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-bold text-gray-900">Practice</h2>
+                {user && (
+                  <span className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded">
+                    Elo: {user.elo}
+                  </span>
+                )}
+              </div>
               {suggestionsError && !suggestionsLoading && (
                 <span className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded">
                   {suggestionsError}
