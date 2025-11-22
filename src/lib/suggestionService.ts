@@ -233,7 +233,7 @@ async function generatePracticeSuggestionsAI(
   const difficulty = getDifficultyRange(elo);
 
   const system = `You are an English practice item generator. Output STRICT JSON only. Language for prompts and content is ${targetLanguage}.`;
-  const developer = `Return exactly ${limit} items. Types must be one of mcq, true_false, match, anagram. difficultyRating must be in [${difficulty.min}, ${difficulty.max}]. Schema per item: { id: string, type, prompt: string, data: type-specific, difficultyRating: number, estimatedTime: number, keywords: string[] }. For mcq.data use { question: string, options: string[], correctIndex: number }. For true_false.data use { statement: string, correct: boolean }. For match.data use { left: string[], right: string[], pairs: Array<{ i: number, v: number }> } mapping indices. For anagram.data use { letters: string[], target: string }.`;
+  const developer = `Return a JSON array containing exactly ${limit} items. Types must be one of mcq, true_false, match, anagram. difficultyRating must be in [${difficulty.min}, ${difficulty.max}]. Do not include any fields outside the schema. Schema per item: { id: string, type, prompt: string, data: type-specific, difficultyRating: number, estimatedTime: number, keywords: string[] }. For mcq.data use { question: string, options: string[], correctIndex: number }. For true_false.data use { statement: string, correct: boolean }. For match.data use { left: string[], right: string[], pairs: Array<{ i: number, v: number }> } mapping indices. For anagram.data use { letters: string[], target: string }.`;
   const user = {
     nativeLanguage,
     targetLanguage,
@@ -262,34 +262,82 @@ async function generatePracticeSuggestionsAI(
     `User: ${JSON.stringify(user)}`,
   ].join("\n");
 
-  const itemSchema = z.object({
+  const baseItemFields = {
     id: z.string(),
-    type: z.enum(["mcq", "true_false", "match", "anagram"]),
     prompt: z.string(),
     difficultyRating: z.number(),
     estimatedTime: z.number(),
     keywords: z.array(z.string()),
-    data: z
-      .object({
-        question: z.string().optional(),
-        options: z.array(z.string()).optional(),
-        correctIndex: z.number().optional(),
-        statement: z.string().optional(),
-        correct: z.boolean().optional(),
-        left: z.array(z.string()).optional(),
-        right: z.array(z.string()).optional(),
-        pairs: z.array(z.object({ i: z.number(), v: z.number() })).optional(),
-        letters: z.array(z.string()).optional(),
-        target: z.string().optional(),
-        scrambled: z.string().optional(),
-      })
-      .passthrough(),
-  });
+  } as const;
+
+  const mcqItemSchema = z
+    .object({
+      ...baseItemFields,
+      type: z.literal("mcq"),
+      data: z
+        .object({
+          question: z.string(),
+          options: z.array(z.string()),
+          correctIndex: z.number(),
+        })
+        .strict(),
+    })
+    .strict();
+
+  const trueFalseItemSchema = z
+    .object({
+      ...baseItemFields,
+      type: z.literal("true_false"),
+      data: z
+        .object({
+          statement: z.string(),
+          correct: z.boolean(),
+        })
+        .strict(),
+    })
+    .strict();
+
+  const matchItemSchema = z
+    .object({
+      ...baseItemFields,
+      type: z.literal("match"),
+      data: z
+        .object({
+          left: z.array(z.string()),
+          right: z.array(z.string()),
+          pairs: z.array(z.object({ i: z.number(), v: z.number() })),
+        })
+        .strict(),
+    })
+    .strict();
+
+  const anagramItemSchema = z
+    .object({
+      ...baseItemFields,
+      type: z.literal("anagram"),
+      data: z
+        .object({
+          letters: z.array(z.string()),
+          target: z.string(),
+        })
+        .strict(),
+    })
+    .strict();
+
+  const itemSchema = z.discriminatedUnion("type", [
+    mcqItemSchema,
+    trueFalseItemSchema,
+    matchItemSchema,
+    anagramItemSchema,
+  ]);
 
   const { object: itemsArray } = await generateObject({
     model,
     system,
-    schema: z.array(itemSchema),
+    output: "array",
+    mode: "json",
+    schemaName: "PracticeSuggestions",
+    schema: itemSchema,
     prompt,
     providerOptions: {
       google: {

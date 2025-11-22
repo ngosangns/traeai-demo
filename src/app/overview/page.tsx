@@ -61,18 +61,25 @@ export default function OverviewPage() {
   const [newKeyword, setNewKeyword] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [currentPracticeIndex, setCurrentPracticeIndex] = useState(0);
-  const [currentExercise, setCurrentExercise] = useState<PracticeSuggestion | null>(null);
-  const [userAnswer, setUserAnswer] = useState<string | number | boolean | Record<number, number> | null>(null);
-  const [result, setResult] = useState<{ isCorrect: boolean; deltaElo: number; newElo: number } | null>(null);
+  const [currentExercise, setCurrentExercise] =
+    useState<PracticeSuggestion | null>(null);
+  const [userAnswer, setUserAnswer] = useState<
+    string | number | boolean | Record<number, number> | null
+  >(null);
+  const [result, setResult] = useState<{
+    isCorrect: boolean;
+    deltaElo: number;
+    newElo: number;
+  } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [practiceError, setPracticeError] = useState("");
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [fetchingMore, setFetchingMore] = useState(false);
   const router = useRouter();
 
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-
-      // Fetch user data
       const userResponse = await fetch("/api/user/me");
       if (!userResponse.ok) {
         if (userResponse.status === 401) {
@@ -84,33 +91,10 @@ export default function OverviewPage() {
       const userData = await userResponse.json();
       setUser(userData.user);
 
-      // Fetch keywords
       const keywordsResponse = await fetch("/api/keywords");
       if (keywordsResponse.ok) {
         const keywordsData = await keywordsResponse.json();
         setKeywords(keywordsData.keywords);
-      }
-
-      // Fetch practice suggestions
-      const suggestionsResponse = await fetch("/api/suggestions?limit=5");
-      if (suggestionsResponse.ok) {
-        const suggestionsData = await suggestionsResponse.json();
-        setSuggestionsError("");
-        setSuggestions(suggestionsData.items);
-        if (Array.isArray(suggestionsData.items) && suggestionsData.items.length > 0) {
-          setCurrentPracticeIndex(0);
-          setCurrentExercise(suggestionsData.items[0]);
-        }
-        (suggestionsData.items as PracticeSuggestion[]).forEach((suggestion) => {
-          sessionStorage.setItem(
-            `exercise_${suggestion.id}`,
-            JSON.stringify(suggestion)
-          );
-        });
-      } else if (suggestionsResponse.status === 503) {
-        setSuggestionsError("Không thể tải gợi ý luyện tập (dịch vụ AI không sẵn sàng)");
-        setSuggestions([]);
-        setCurrentExercise(null);
       }
     } catch (err) {
       setError("Failed to load data");
@@ -120,11 +104,76 @@ export default function OverviewPage() {
     }
   }, [router]);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const fetchSuggestions = useCallback(async () => {
+    const mergeUnique = (
+      curr: PracticeSuggestion[],
+      next: PracticeSuggestion[]
+    ) => {
+      const seen = new Set(curr.map((i) => i.id));
+      const filtered = next.filter((i) => !seen.has(i.id));
+      return [...curr, ...filtered];
+    };
 
-  
+    const fetchBatch = async (limit = 5): Promise<PracticeSuggestion[]> => {
+      const res = await fetch(`/api/suggestions?limit=${limit}`);
+      if (!res.ok) {
+        if (res.status === 503) {
+          setSuggestionsError(
+            "Không thể tải gợi ý luyện tập (dịch vụ AI không sẵn sàng)"
+          );
+        }
+        return [];
+      }
+      const data = await res.json();
+      const items = (data.items || []) as PracticeSuggestion[];
+      items.forEach((s) => {
+        sessionStorage.setItem(`exercise_${s.id}`, JSON.stringify(s));
+      });
+      return items;
+    };
+
+    let initial: PracticeSuggestion[] = [];
+    try {
+      setSuggestionsLoading(true);
+      setSuggestionsError("");
+      initial = await fetchBatch(5);
+      setSuggestions(initial);
+      if (initial.length > 0) {
+        setCurrentPracticeIndex(0);
+        setCurrentExercise(initial[0]);
+      } else {
+        setCurrentExercise(null);
+      }
+    } catch (e) {
+      setSuggestionsError("Không thể tải gợi ý luyện tập");
+      setSuggestions([]);
+      setCurrentExercise(null);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+
+    try {
+      if (initial.length < 15) {
+        setFetchingMore(true);
+        let current = initial;
+        let safety = 10;
+        while (current.length < 15 && safety-- > 0) {
+          const batch = await fetchBatch(5);
+          if (batch.length === 0) break;
+          current = mergeUnique(current, batch);
+          setSuggestions(current);
+        }
+      }
+    } finally {
+      setFetchingMore(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData().then(() => {
+      fetchSuggestions();
+    });
+  }, [fetchData, fetchSuggestions]);
 
   const handleLogout = async () => {
     try {
@@ -195,7 +244,9 @@ export default function OverviewPage() {
             </h2>
             <div className="space-y-2">
               {keywords.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No keywords added yet</p>
+                <p className="text-gray-500 text-center py-8">
+                  No keywords added yet
+                </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {keywords.map((keyword) => (
@@ -235,7 +286,9 @@ export default function OverviewPage() {
             <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
               <div className="bg-white rounded-lg shadow-lg w-full max-w-lg p-6">
                 <div className="flex justify-between items-center mb-4">
-                  <h4 className="text-lg font-semibold text-gray-900">Edit Keywords</h4>
+                  <h4 className="text-lg font-semibold text-gray-900">
+                    Edit Keywords
+                  </h4>
                   <button
                     onClick={() => setEditOpen(false)}
                     className="text-gray-600 hover:text-gray-900"
@@ -256,9 +309,13 @@ export default function OverviewPage() {
                           {k.value}
                           <button
                             onClick={async () => {
-                              const res = await fetch(`/api/keywords/${k.id}`, { method: "DELETE" });
+                              const res = await fetch(`/api/keywords/${k.id}`, {
+                                method: "DELETE",
+                              });
                               if (res.ok) {
-                                setKeywords(keywords.filter((kw) => kw.id !== k.id));
+                                setKeywords(
+                                  keywords.filter((kw) => kw.id !== k.id)
+                                );
                               }
                             }}
                             className="text-red-600 hover:text-red-800"
@@ -268,7 +325,9 @@ export default function OverviewPage() {
                         </span>
                       ))}
                       {keywords.length === 0 && (
-                        <span className="text-sm text-gray-500">No keywords yet</span>
+                        <span className="text-sm text-gray-500">
+                          No keywords yet
+                        </span>
                       )}
                     </div>
                     <div className="flex gap-2">
@@ -308,12 +367,18 @@ export default function OverviewPage() {
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold text-gray-900">Practice</h2>
-              {suggestionsError && (
+              {suggestionsError && !suggestionsLoading && (
                 <span className="text-sm bg-red-100 text-red-700 px-3 py-1 rounded">
                   {suggestionsError}
                 </span>
               )}
               <div className="flex items-center gap-2">
+                {fetchingMore && (
+                  <div
+                    className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"
+                    aria-label="loading more"
+                  />
+                )}
                 <button
                   onClick={() => {
                     if (suggestions.length === 0) return;
@@ -327,14 +392,19 @@ export default function OverviewPage() {
                     }
                   }}
                   className="px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                  disabled={suggestions.length === 0 || currentPracticeIndex === 0}
+                  disabled={
+                    suggestions.length === 0 || currentPracticeIndex === 0
+                  }
                 >
                   ←
                 </button>
                 <button
                   onClick={() => {
                     if (suggestions.length === 0) return;
-                    const nextIndex = Math.min(suggestions.length - 1, currentPracticeIndex + 1);
+                    const nextIndex = Math.min(
+                      suggestions.length - 1,
+                      currentPracticeIndex + 1
+                    );
                     if (nextIndex !== currentPracticeIndex) {
                       setCurrentPracticeIndex(nextIndex);
                       setCurrentExercise(suggestions[nextIndex]);
@@ -344,15 +414,48 @@ export default function OverviewPage() {
                     }
                   }}
                   className="px-3 py-2 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                  disabled={suggestions.length === 0 || currentPracticeIndex === suggestions.length - 1}
+                  disabled={
+                    suggestions.length === 0 ||
+                    currentPracticeIndex === suggestions.length - 1
+                  }
                 >
                   →
                 </button>
               </div>
             </div>
 
-            {suggestions.length === 0 || !currentExercise ? (
-              <p className="text-gray-500 text-center py-8">No suggestions available</p>
+            {suggestionsLoading ? (
+              <div className="animate-pulse">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="h-6 w-40 bg-gray-200 rounded"></div>
+                  <div className="flex space-x-2">
+                    <div className="h-6 w-28 bg-gray-200 rounded"></div>
+                  </div>
+                </div>
+                <div className="h-5 w-3/4 bg-gray-200 rounded mb-6"></div>
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <div className="h-4 w-24 bg-gray-200 rounded mb-3"></div>
+                    <div className="space-y-2">
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="h-4 w-24 bg-gray-200 rounded mb-3"></div>
+                    <div className="space-y-2">
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                      <div className="h-10 bg-gray-200 rounded"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : suggestions.length === 0 || !currentExercise ? (
+              <p className="text-gray-500 text-center py-8">
+                No suggestions available
+              </p>
             ) : (
               <div className="">
                 <div className="flex justify-between items-center mb-4">
@@ -363,12 +466,11 @@ export default function OverviewPage() {
                     <span className="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded">
                       Difficulty: {currentExercise.difficultyRating}
                     </span>
-                    <span className="text-sm bg-blue-100 text-blue-700 px-3 py-1 rounded">
-                      {currentExercise.estimatedTime}s
-                    </span>
                   </div>
                 </div>
-                <p className="text-gray-700 text-lg mb-6">{currentExercise.prompt}</p>
+                <p className="text-gray-700 text-lg mb-6">
+                  {currentExercise.prompt}
+                </p>
 
                 <div className="mb-8">
                   {currentExercise.type === "mcq" && (
@@ -416,7 +518,8 @@ export default function OverviewPage() {
                               exerciseId: currentExercise.id,
                               answer: userAnswer,
                               exerciseType: currentExercise.type,
-                              difficultyRating: currentExercise.difficultyRating,
+                              difficultyRating:
+                                currentExercise.difficultyRating,
                               correctAnswer: currentExercise.data,
                             }),
                           });
@@ -424,7 +527,9 @@ export default function OverviewPage() {
                           if (response.ok) {
                             setResult(data);
                           } else {
-                            setPracticeError(data.error || "Failed to submit answer");
+                            setPracticeError(
+                              data.error || "Failed to submit answer"
+                            );
                           }
                         } catch {
                           setPracticeError("Network error. Please try again.");
@@ -441,19 +546,103 @@ export default function OverviewPage() {
                 )}
 
                 {practiceError && (
-                  <p className="text-center text-red-600 mt-4">{practiceError}</p>
+                  <p className="text-center text-red-600 mt-4">
+                    {practiceError}
+                  </p>
                 )}
 
                 {result && (
                   <div className="mt-8 p-6 rounded-lg">
-                    <div className={`text-center ${result.isCorrect ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"} border`}>
-                      <h3 className={`text-xl font-semibold mb-2 ${result.isCorrect ? "text-green-800" : "text-red-800"}`}>
+                    <div
+                      className={`text-center ${
+                        result.isCorrect
+                          ? "bg-green-50 border-green-200"
+                          : "bg-red-50 border-red-200"
+                      } border`}
+                    >
+                      <h3
+                        className={`text-xl font-semibold mb-2 ${
+                          result.isCorrect ? "text-green-800" : "text-red-800"
+                        }`}
+                      >
                         {result.isCorrect ? "Correct! 🎉" : "Incorrect 😞"}
                       </h3>
                       <p className="text-gray-700 mb-2">
-                        Elo change: {result.deltaElo > 0 ? "+" : ""}{result.deltaElo}
+                        Elo change: {result.deltaElo > 0 ? "+" : ""}
+                        {result.deltaElo}
                       </p>
-                      <p className="text-gray-700 mb-4">New Elo: {result.newElo}</p>
+                      <p className="text-gray-700 mb-4">
+                        New Elo: {result.newElo}
+                      </p>
+                    </div>
+
+                    <div className="mt-6 p-4 border rounded">
+                      <h4 className="text-lg font-semibold text-gray-900">
+                        Correct Answer
+                      </h4>
+                      {currentExercise.type === "mcq" && (
+                        <p className="text-gray-700 mt-2">
+                          {
+                            (currentExercise.data as MCQData).options[
+                              (currentExercise.data as MCQData).correctIndex
+                            ]
+                          }
+                        </p>
+                      )}
+                      {currentExercise.type === "true_false" && (
+                        <p className="text-gray-700 mt-2">
+                          {(currentExercise.data as TrueFalseData).correct
+                            ? "True"
+                            : "False"}
+                        </p>
+                      )}
+                      {currentExercise.type === "match" && (
+                        <div className="mt-2 space-y-2">
+                          {Object.entries(
+                            (currentExercise.data as MatchData).pairs
+                          ).map(([l, r]) => {
+                            const md = currentExercise.data as MatchData;
+                            const li = Number(l);
+                            const ri = Number(r);
+                            return (
+                              <div key={l} className="text-gray-700">
+                                {md.left[li]} {"->"} {md.right[ri]}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {currentExercise.type === "anagram" && (
+                        <p className="text-gray-700 mt-2">
+                          {(currentExercise.data as AnagramData).target}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-6 flex justify-center">
+                      <button
+                        onClick={() => {
+                          if (suggestions.length === 0) return;
+                          const nextIndex = Math.min(
+                            suggestions.length - 1,
+                            currentPracticeIndex + 1
+                          );
+                          if (nextIndex !== currentPracticeIndex) {
+                            setCurrentPracticeIndex(nextIndex);
+                            setCurrentExercise(suggestions[nextIndex]);
+                            setUserAnswer(null);
+                            setResult(null);
+                            setPracticeError("");
+                          }
+                        }}
+                        className="bg-indigo-600 text-white px-6 py-3 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                        disabled={
+                          suggestions.length === 0 ||
+                          currentPracticeIndex === suggestions.length - 1
+                        }
+                      >
+                        Jump to Next Item
+                      </button>
                     </div>
                   </div>
                 )}
@@ -466,12 +655,23 @@ export default function OverviewPage() {
   );
 }
 
-function MCQExercise({ data, onAnswer, disabled }: { data: MCQData; onAnswer: (answer: number) => void; disabled: boolean }) {
+function MCQExercise({
+  data,
+  onAnswer,
+  disabled,
+}: {
+  data: MCQData;
+  onAnswer: (answer: number) => void;
+  disabled: boolean;
+}) {
   return (
     <div className="space-y-3">
       <p className="text-gray-700">{data.question}</p>
       {data.options.map((option: string, index: number) => (
-        <label key={index} className="flex items-center space-x-3 cursor-pointer">
+        <label
+          key={index}
+          className="flex items-center space-x-3 cursor-pointer"
+        >
           <input
             type="radio"
             name="mcq-answer"
@@ -487,7 +687,15 @@ function MCQExercise({ data, onAnswer, disabled }: { data: MCQData; onAnswer: (a
   );
 }
 
-function TrueFalseExercise({ data, onAnswer, disabled }: { data: TrueFalseData; onAnswer: (answer: boolean) => void; disabled: boolean }) {
+function TrueFalseExercise({
+  data,
+  onAnswer,
+  disabled,
+}: {
+  data: TrueFalseData;
+  onAnswer: (answer: boolean) => void;
+  disabled: boolean;
+}) {
   return (
     <div className="space-y-3">
       <p className="text-gray-700">{data.statement}</p>
@@ -519,7 +727,15 @@ function TrueFalseExercise({ data, onAnswer, disabled }: { data: TrueFalseData; 
   );
 }
 
-function MatchExercise({ data, onAnswer, disabled }: { data: MatchData; onAnswer: (answer: Record<number, number>) => void; disabled: boolean }) {
+function MatchExercise({
+  data,
+  onAnswer,
+  disabled,
+}: {
+  data: MatchData;
+  onAnswer: (answer: Record<number, number>) => void;
+  disabled: boolean;
+}) {
   const [matches, setMatches] = useState<Record<number, number>>({});
   const [selectedLeft, setSelectedLeft] = useState<number | null>(null);
 
@@ -544,7 +760,11 @@ function MatchExercise({ data, onAnswer, disabled }: { data: MatchData; onAnswer
               if (disabled) return;
               setSelectedLeft(index);
             }}
-            className={`block w-full p-3 rounded mb-2 text-left ${selectedLeft === index ? "bg-indigo-100" : "bg-gray-50"} hover:bg-indigo-50 disabled:cursor-not-allowed`}
+            className={`block w-full p-3 rounded mb-2 text-left border ${
+              selectedLeft === index
+                ? "bg-indigo-200 border-indigo-300"
+                : "bg-gray-100 border-gray-300"
+            } hover:bg-indigo-200 text-gray-800 disabled:cursor-not-allowed`}
             disabled={disabled}
           >
             {item}
@@ -558,13 +778,17 @@ function MatchExercise({ data, onAnswer, disabled }: { data: MatchData; onAnswer
             key={index}
             onClick={() => {
               if (disabled) return;
-              if (selectedLeft !== null && matches[selectedLeft] === undefined && !rightAlreadyTaken(index)) {
+              if (
+                selectedLeft !== null &&
+                matches[selectedLeft] === undefined &&
+                !rightAlreadyTaken(index)
+              ) {
                 handleMatch(selectedLeft, index);
                 setSelectedLeft(null);
               }
             }}
             disabled={disabled || rightAlreadyTaken(index)}
-            className="block w-full p-3 bg-blue-50 rounded mb-2 text-left hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="block w-full p-3 bg-blue-200 text-gray-800 rounded mb-2 text-left border border-blue-300 hover:bg-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {item}
           </button>
@@ -574,28 +798,57 @@ function MatchExercise({ data, onAnswer, disabled }: { data: MatchData; onAnswer
   );
 }
 
-function AnagramExercise({ data, onAnswer, disabled }: { data: AnagramData; onAnswer: (answer: string) => void; disabled: boolean }) {
-  const [answer, setAnswer] = useState("");
+function AnagramExercise({
+  data,
+  onAnswer,
+  disabled,
+}: {
+  data: AnagramData;
+  onAnswer: (answer: string) => void;
+  disabled: boolean;
+}) {
+  const [selected, setSelected] = useState<boolean[]>(() =>
+    Array(data.letters.length).fill(false)
+  );
+  const [orderedTokens, setOrderedTokens] = useState<string[]>([]);
+
+  const handleSelect = (index: number) => {
+    if (disabled || selected[index]) return;
+    const token = data.letters[index];
+    const nextSelected = [...selected];
+    nextSelected[index] = true;
+    const nextOrdered = [...orderedTokens, token];
+    setSelected(nextSelected);
+    setOrderedTokens(nextOrdered);
+    onAnswer(nextOrdered.join(""));
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2 mb-4">
-        {data.letters.map((letter: string, index: number) => (
-          <span key={index} className="px-3 py-2 bg-blue-100 text-blue-800 rounded font-mono">
-            {letter}
-          </span>
+        {data.letters.map((token: string, index: number) => (
+          <button
+            key={index}
+            onClick={() => handleSelect(index)}
+            disabled={disabled || selected[index]}
+            className="px-3 py-2 bg-blue-200 text-gray-800 rounded hover:bg-blue-300 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {token}
+          </button>
         ))}
       </div>
-      <input
-        type="text"
-        value={answer}
-        onChange={(e) => {
-          setAnswer(e.target.value);
-          onAnswer(e.target.value);
-        }}
-        placeholder="Enter your answer..."
-        disabled={disabled}
-        className="w-full border border-gray-300 rounded-md px-4 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-      />
+      <div className="min-h-12 p-3 bg-gray-50 rounded border border-gray-200">
+        <div className="flex flex-wrap gap-2">
+          {orderedTokens.map((t: string, i: number) => (
+            <span
+              key={i}
+              className="px-3 py-2 bg-green-100 text-gray-800 rounded"
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

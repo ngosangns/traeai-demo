@@ -10,7 +10,9 @@ interface RateLimitOptions {
 
 export function createRateLimit(options: RateLimitOptions) {
   return function rateLimitMiddleware(request: NextRequest): NextResponse | null {
-    const ip = request.ip || 'unknown';
+    const ip =
+      request.headers.get('x-real-ip') ||
+      (request.headers.get('x-forwarded-for')?.split(',')[0] ?? 'unknown');
     const key = `rate_limit:${ip}`;
     const now = Date.now();
     

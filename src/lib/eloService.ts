@@ -59,7 +59,11 @@ export function evaluateAnswer(
       return true;
       
     case 'anagram':
-      return userAnswer.toLowerCase().trim() === correctAnswer.target.toLowerCase().trim();
+      return (
+        typeof userAnswer === 'string' &&
+        typeof correctAnswer.target === 'string' &&
+        userAnswer.toLowerCase().trim() === correctAnswer.target.toLowerCase().trim()
+      );
       
     default:
       return false;

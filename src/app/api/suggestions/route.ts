@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Keyword } from "@prisma/client";
 import { getSession } from "@/lib/session";
 import { getPrisma } from "@/lib/prisma";
 import {
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
     // Get keywords or use defaults if none exist
     const keywords =
       user.keywords.length > 0
-        ? user.keywords.map((k) => k.value)
+        ? (user.keywords as Keyword[]).map((k: Keyword) => k.value)
         : ["family", "work", "food", "travel", "health"];
 
     // Generate suggestions using the service

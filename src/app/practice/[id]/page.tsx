@@ -182,7 +182,7 @@ export default function PracticePage() {
           <div className="mb-8">
             {exercise.type === 'mcq' && (
               <MCQExercise
-                data={exercise.data}
+                data={exercise.data as MCQData}
                 onAnswer={setUserAnswer}
                 disabled={result !== null}
               />
@@ -190,7 +190,7 @@ export default function PracticePage() {
             
             {exercise.type === 'true_false' && (
               <TrueFalseExercise
-                data={exercise.data}
+                data={exercise.data as TrueFalseData}
                 onAnswer={setUserAnswer}
                 disabled={result !== null}
               />
@@ -198,7 +198,7 @@ export default function PracticePage() {
             
             {exercise.type === 'match' && (
               <MatchExercise
-                data={exercise.data}
+                data={exercise.data as MatchData}
                 onAnswer={setUserAnswer}
                 disabled={result !== null}
               />
@@ -206,7 +206,7 @@ export default function PracticePage() {
             
             {exercise.type === 'anagram' && (
               <AnagramExercise
-                data={exercise.data}
+                data={exercise.data as AnagramData}
                 onAnswer={setUserAnswer}
                 disabled={result !== null}
               />

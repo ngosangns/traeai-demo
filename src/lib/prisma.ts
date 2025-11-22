@@ -2,9 +2,9 @@
 const prismaModule = require('@prisma/client') as typeof import('@prisma/client')
 const PrismaClient: typeof import('@prisma/client').PrismaClient = prismaModule.PrismaClient
 
-let prismaInstance: PrismaClient | undefined
+let prismaInstance: InstanceType<typeof PrismaClient> | undefined
 
-export function getPrisma(): PrismaClient {
+export function getPrisma(): InstanceType<typeof PrismaClient> {
   if (prismaInstance) return prismaInstance
 
   const globalForPrisma = globalThis as unknown as { prisma?: InstanceType<typeof PrismaClient> }
